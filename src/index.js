@@ -22,7 +22,6 @@ import Home from './Home';
 import { all } from 'axios';
 import User from './User';
 import Settings from './Settings';
-import AllWishLists from './AllWishLists';
 import { Loader } from "@googlemaps/js-api-loader"
 
 
@@ -35,16 +34,20 @@ const App = ()=> {
   const [users, setUsers] = useState([]);
   const [allOrders, setAllOrders] = useState([]);
   const [allLineItems, setAllLineItems] = useState([]);
+  const [wishList, setWishList] = useState([]);
   const [reviews, setReviews] = useState([]);
-  const [wishLists, setWishLists] = useState([]);
-  const [allWishLists, setAllWishLists] = useState([]);
+  const [wishListItems, setWishListItems] = useState([]);
   const [tags, setTags] = useState([]);
   const [tag_lines, setTag_lines] = useState([]);
   const [addresses, setAddresses] = useState([]);
   const [dropdownUser, setDropdownUser] = useState(false);
   const [dropdownAdmin, serDropdownAdmin] = useState(false);
   const [bookmarks, setBookmarks] = useState([]);
+
+  //const [wishList, setWishList] = useState([]);
   const el = useRef();
+
+
 
   const attemptLoginWithToken = async()=> {
     await api.attemptLoginWithToken(setAuth);
@@ -104,7 +107,7 @@ const App = ()=> {
   useEffect(() => {
     if(auth.id){
       const fetchData = async() => {
-        await api.fetchWishList(setWishLists);
+        await api.fetchWishListItems(setWishListItems);
       };
       fetchData();
     }
@@ -120,11 +123,13 @@ const App = ()=> {
   }, [auth]);
 
   useEffect(()=> {
+    if(auth.is_admin){
       const fetchData = async()=> {
         await api.fetchUsers(setUsers);
       };
       fetchData();
-  }, []);
+    }
+  }, [auth]);
 
   useEffect(()=> {
     if(auth.is_admin){
@@ -144,19 +149,10 @@ const App = ()=> {
     }
   }, [auth]);
 
-  useEffect(() => {
-    if(auth.is_admin){
-      const fetchData = async() => {
-        await api.fetchAllWishLists(setAllWishLists);
-      };
-      fetchData();
-    }
-  }, [auth]);
-
   useEffect(()=> {
     const setup = async()=> {
       const loader = new Loader({
-        apiKey: window.GOOGLE_API,
+        apiKey: window.GOOGLE_API_KEY,
       });
      await loader.load();
      const { Map } = await google.maps.importLibrary("places");
@@ -183,8 +179,7 @@ const App = ()=> {
   };
 
   const createAddress = async(address)=> {
-    console.log(addresses);
-    await api.createAddress({address, addresses, setAddresses});
+    await api.createAddress({ address, addresses, setAddresses });
   };
 
   const createProduct = async(product)=> {
@@ -227,32 +222,38 @@ const App = ()=> {
     await api.decreaseQuantity({ lineItem, lineItems, setLineItems });
   }
 
-  const addWishList = async(wishList) => {
-    await api.addWishList({wishList, setWishLists, wishLists})
-  }
+  const updateWishListItem = async(wishList) => {
+    await api.updateWishListItem({wishList, setWishList});
+  };
 
-  const removeWishList = async(wishList) => {
-    await api.removeWishList({wishList, setWishLists, wishLists})
-
+  const createWishListItem = async(wishListItems) => {
+    await api.createWishListItem({wishListItems, setWishListItems});
   }
+  
+  const removeFromWishList = async(lineItem) => {
+    await api.removeFromWishList({lineItem, lineItems, setLineItems});
+  };
   
   const createReviews = async(review)=> {
     await api.createReviews({review, reviews, setReviews});
   };
   
-  const createBookmark = async(bookmark)=> {
-    await api.createBookmark({ bookmark, bookmarks, setBookmarks });
-  };
-  
-  const removeBookmark = async(bookmark)=> {
-    await api.removeBookmark({ bookmark, bookmarks, setBookmarks });
-  };
-  
   const cart = orders.find(order => order.is_cart) || {};
+  //console.log(cart);
 
   const cartItems = lineItems.filter(lineItem => lineItem.order_id === cart.id);
 
   const cartCount = cartItems.reduce((acc, item)=> {
+    return acc += item.quantity;
+  }, 0);
+
+  const list = products.find(product => product.is_list) || {};
+  //console.log(products);
+  
+  // const wishListItems = lineItems.filter(lineItem => lineItem.order_id === list.id);
+  // //console.log(wishListItems);
+
+  const wishListCount = wishListItems.reduce((acc, item) => {
     return acc += item.quantity;
   }, 0);
 
@@ -272,14 +273,11 @@ const App = ()=> {
     await api.login({ credentials, setAuth });
   }
 
-  const githubLogin = async()=>{
-    await api.handleGithubLogin({ users, setAuth });
-  }
-
   const logout = ()=> {
     api.logout(setAuth);
   }
   
+
   const handleMouseEnter = () => {
     setDropdownUser(true);
   };
@@ -304,10 +302,8 @@ const App = ()=> {
         auth.id ? (
           <>
             <nav>
-
-              {/* <Link to='/wishlist'>Wish List</Link> */}
-
               <div className='navItem'>
+      
                 <Link to='/'>BBB</Link>
               </div>
               <div className='navItem'>
@@ -326,6 +322,7 @@ const App = ()=> {
                 <img src='assets/order48.png'/>
                 <Link to='/orders'>Orders ({ orders.filter(order => !order.is_cart).length })</Link>
               </div>
+
               <div className='navItem'>
                 <div>
                   { auth.avatar ? <img className='avatar' src={ auth.avatar } /> : <img className='avatar' src={'assets/defaultavatar.png'} />}
@@ -334,10 +331,9 @@ const App = ()=> {
                   onMouseLeave={handleMouseLeave}>
                   Welcome { auth.username }!
                   { auth.is_vip === true ? 'VIP!' : ''  }
-                  { dropdownUser && <UserMenu logout={ logout } auth={ auth } wishLists={wishLists}/> }
+                  { dropdownUser && <UserMenu logout={ logout } wishListCount={ wishListCount } auth={ auth }/> }
                 </div>
               </div>
-
               {
                 auth.is_admin ? 
                 <div className='navItem'>
@@ -348,8 +344,9 @@ const App = ()=> {
                   onMouseEnter={handleMouseEnterAdmin}
                   onMouseLeave={handleMouseLeaveAdmin}
                 >
+                  
                   Admin Menu
-                   { dropdownAdmin && <AdminMenu users={users} allOrders={allOrders} wishLists={wishLists}/> }
+                   { dropdownAdmin && <AdminMenu users={users} allOrders={allOrders}/> }
                 </div>
 
                 </div>
@@ -360,20 +357,15 @@ const App = ()=> {
               <Routes>
                 <Route path='/users/:id' element={ <User auth={ auth } addresses={ addresses } /> } />
                 <Route path='/settings/:id' element={ <Settings auth={ auth } updateSelf={ updateSelf } createAddress={ createAddress } addresses={ addresses }/> }/>
+                <Route path='/products/:id' element={<Product products={ products } reviews={ reviews } createReviews={ createReviews } auth={auth}/>}/>
                 
-                <Route path='/' element={ <Home auth={ auth }/> }/>
+                <Route path='/' element={ <Home /> }/>
                 <Route path='/products/:id' element={
                   <Product 
                   products={ products } 
                   reviews={ reviews } 
                   createReviews={ createReviews } 
                   auth={ auth } 
-                  bookmarks={ bookmarks }
-                  createBookmark={ createBookmark }
-                  removeBookmark={ removeBookmark }
-                  wishLists={wishLists}
-                  addWishList={addWishList}
-                  removeWishList={removeWishList}
                   />
                 }/>
 
@@ -388,12 +380,10 @@ const App = ()=> {
                   updateProduct={ updateProduct }
                   tags = { tags }
                   tag_lines = { tag_lines }
-                  wishLists = { wishLists }
-                  addWishList = { addWishList }
-                  removeWishList = { removeWishList }
-                  bookmarks = { bookmarks }
-                  createBookmark={ createBookmark }
-                  removeBookmark={ removeBookmark }
+                  wishListItems = {wishListItems}
+                  createWishListItem = {createWishListItem}
+                  updateWishList = {updateWishListItem}
+                  removeFromWishList = {removeFromWishList}
                 />
                 } />
                 <Route path='/products' element={
@@ -403,17 +393,14 @@ const App = ()=> {
                   cartItems = { cartItems }
                   createLineItem = { createLineItem }
                   updateLineItem = { updateLineItem }
-                  wishLists = { wishLists }
-                  addWishList = { addWishList }
-                  removeWishList = { removeWishList }
                   createProduct = { createProduct }
                   updateProduct={ updateProduct }
                   tags = { tags }
                   tag_lines = { tag_lines }
-                  bookmarks = { bookmarks }
-                  createBookmark={ createBookmark }
-                  removeBookmark={ removeBookmark }
-
+                  wishListItems = {wishListItems}
+                  createWishListItem = {createWishListItem}
+                  updateWishList = {updateWishListItem}
+                  removeFromWishList = {removeFromWishList}
                 />
                 } />
                 <Route path='/tags' element={ 
@@ -452,15 +439,16 @@ const App = ()=> {
                   orders = { orders }
                   products = { products }
                   lineItems = { lineItems }
-                  addresses={ addresses }
                 />
                 } />
                 <Route path='/wishlist' element={ 
                   <WishList
-                  wishLists = {wishLists}
-                  addWishList = {addWishList}
+                  wishList = {list}
+                  wishListItems = {wishListItems}
+                  createWishListItem = {createWishListItem}
                   products = {products}
-                  removeWishList = {removeWishList}
+                  updateWishList = {updateWishListItem}
+                  removeFromWishList = {removeFromWishList}
                   />
                 } />
 
@@ -472,7 +460,6 @@ const App = ()=> {
                   <Route path={'/products/:id/edit'} element={ <UpdateProduct products={ products } updateProduct={updateProduct}/> }/>
                   <Route path={'/orders/all'} element={ <AllOrders allOrders={allOrders} products = { products } allLineItems = { allLineItems }/> } />
                   <Route path={'/users/:id/edit'} element={<UpdateUser users={users} updateUser={ updateUser }/>}/>
-                  <Route path={'/wishlists'} element={ <AllWishLists allWishLists={allWishLists} users={users} products={products}/>}/>
                   <Route path={'/tags/edit/'} element={ <EditTags products={products} tag_lines={ tag_lines } tags={tags} createTag_line={ createTag_line } deleteTag_line={ deleteTag_line}/> } />
                 </Routes>
               ) : ''
@@ -482,7 +469,7 @@ const App = ()=> {
             </>
         ):(
           <div>
-            <Login login={ login } githubLogin={ githubLogin }/>
+            <Login login={ login }/>
             <Register registerUser={ registerUser }/>
             <Routes>
               <Route path='/products' element= {
@@ -491,13 +478,13 @@ const App = ()=> {
                   cartItems = { cartItems }
                   createLineItem = { createLineItem }
                   updateLineItem = { updateLineItem }
-                  wishLists = { wishLists }
-                  addWishList = { addWishList }
-                  removeWishList = { removeWishList }
                   auth = { auth }
                   tags = { tags }
                   tag_lines = { tag_lines }
-                  bookmarks={ bookmarks }
+                  wishListItems = {wishListItems}
+                  createWishListItem = {createWishListItem}
+                  updateWishList = {updateWishListItem}
+                  removeFromWishList = {removeFromWishList}
                 />
               } />
             </Routes>
